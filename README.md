@@ -4,6 +4,16 @@ TradeX is a robust, scalable, and resilient microservices-based trading platform
 It is engineered with strict production standards, prioritizing financial data integrity, fault tolerance, and comprehensive observability.
 The system comprises seven specialized microservices working in concert to deliver a seamless trading experience.
 
+## Repository Map
+This platform is composed of 7 isolated microservices:
+
+* [API Gateway](https://github.com/AnandhuSajikumar/tradex-api-gateway)
+* [Service Discovery (Eureka)](https://github.com/AnandhuSajikumar/tradex-eureka-server)
+* [Central Config Server](https://github.com/AnandhuSajikumar/tradex-config-server)
+* [Identity Service](https://github.com/AnandhuSajikumar/tradex-identity-service)
+* [Transaction Service](https://github.com/AnandhuSajikumar/tradex-transact-service)
+* [Portfolio Service](https://github.com/AnandhuSajikumar/tradex-portfolio-service)
+* [Market Service](https://github.com/AnandhuSajikumar/tradex-market-service)
 
 System Architecture
 
