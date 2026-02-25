@@ -1,0 +1,169 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: tradex-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_MULTIPLE_DATABASES: tradex_identity,tradex_portfolio,tradex_transact,tradex_market
+    volumes:
+      - tradex_pgdata:/var/lib/postgresql/data
+      - ./init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh
+    ports:
+      - "5432:5432"
+    networks:
+      - tradex-net
+    restart: unless-stopped
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: tradex-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - tradex-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: tradex-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - tradex-net
+
+  eureka-server:
+    build: ../tradex-eureka-server
+    container_name: tradex-eureka-server
+    ports:
+      - "8761:8761"
+    networks:
+      - tradex-net
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8761/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  config-server:
+    build: ../tradex-config-server
+    container_name: tradex-config-server
+    volumes:
+      - ../tradex-config-server/config-repo:/config-repo
+    ports:
+      - "8888:8888"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+    networks:
+      - tradex-net
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:8888/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  identity-service:
+    build: ../tradex-identity-service
+    container_name: tradex-identity-service
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/tradex_identity
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+    networks:
+      - tradex-net
+
+  portfolio-service:
+    build: ../tradex-portfolio-service
+    container_name: tradex-portfolio-service
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/tradex_portfolio
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+    networks:
+      - tradex-net
+
+  transact-service:
+    build: ../tradex-transact-service
+    container_name: tradex-transact-service
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/tradex_transact
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+    networks:
+      - tradex-net
+
+  market-service:
+    build: ../tradex-market-service
+    container_name: tradex-market-service
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/tradex_market
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_started
+      kafka:
+        condition: service_started
+      config-server:
+        condition: service_healthy
+    networks:
+      - tradex-net
+
+  api-gateway:
+    build: ../tradex-api-gateway
+    container_name: tradex-api-gateway
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8888
+    ports:
+      - "8080:8080"
+    depends_on:
+      config-server:
+        condition: service_healthy
+    networks:
+      - tradex-net
+
+networks:
+  tradex-net:
+    driver: bridge
+
+volumes:
+  tradex_pgdata:
